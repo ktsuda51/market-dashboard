@@ -6,21 +6,20 @@ import numpy as np
 # --- ページ設定 ---
 st.set_page_config(page_title="Chief Dealer Dashboard Pro", layout="wide")
 
-# --- カスタムCSS（スマホ最適化） ---
+# --- カスタムCSS（スマホ・ステータス最適化） ---
 st.markdown("""
     <style>
     .metric-card {
-        background-color: #1e1e1e; border-radius: 4px; padding: 10px;
-        border-left: 5px solid #333; margin-bottom: 8px; color: white;
+        background-color: #1e1e1e; border-radius: 6px; padding: 12px;
+        border-left: 6px solid #333; margin-bottom: 10px; color: white;
     }
-    .status-good { border-left-color: #00bfff; }
+    .status-good { border-left-color: #00bfff; background-color: #001a33; }
     .status-stable { border-left-color: #00ff00; }
     .status-warning { border-left-color: #ff4500; }
-    .status-critical { border-left-color: #ff0000; }
-    .price-text { font-size: 1.5rem; font-weight: bold; }
-    .label-text { font-size: 0.8rem; color: #aaa; }
-    /* スマホで指標が潰れないよう調整 */
-    [data-testid="stMetric"] { background-color: #161616; padding: 10px; border-radius: 5px; }
+    .status-critical { border-left-color: #ff0000; background-color: #3d0000; }
+    .price-text { font-size: 1.6rem; font-weight: bold; }
+    .label-text { font-size: 0.85rem; color: #aaa; }
+    .status-text { font-size: 0.8rem; font-weight: bold; margin-top: 4px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -35,11 +34,10 @@ ASSETS = {
         "USD Index": "UUP", "JPY Index(FXY)": "FXY"
     },
     "主要指数": {
-        "S&P500": "^GSPC", "NYダウ": "^DJI", "SOX指数": "^SOX", "日経225": "^N225",
-        "独DAX": "^GDAXI", "英FTSE": "^FTSE", "上海総合": "000001.SS"
+        "S&P500": "^GSPC", "NYダウ": "^DJI", "SOX指数": "^SOX", "日経225": "^N225"
     },
     "金利/VIX": {
-        "米10年債": "^TNX", "米2年債": "^ZVQ", "VIX指数": "^VIX"
+        "米10年債": "^TNX", "VIX指数": "^VIX"
     }
 }
 
@@ -57,7 +55,7 @@ def fetch_all_data(_tickers):
         return pd.DataFrame()
 
 # --- メイン処理 ---
-st.title("🛡️ Market Dashboard Mobile")
+st.title("🛡️ Dealer Mobile Pro")
 tabs = st.tabs(["📊 総合", "💱 為替", "📈 指数", "📉 金利"])
 
 tickers_map = {name: ticker for cat in ASSETS.values() for name, ticker in cat.items()}
@@ -95,34 +93,33 @@ try:
                         <div class="metric-card {res['class']}">
                             <div class="label-text">{name}</div>
                             <div class="price-text">{res['price']:{res['fmt']}}</div>
-                            <div style="color: {'#ff4b4b' if res['change'] >= 0 else '#00ff00'};">{'▲' if res['change'] >= 0 else '▼'} {abs(res['change']):.2f}%</div>
+                            <div style="color: {'#ff4b4b' if res['change'] >= 0 else '#00ff00'}; font-weight:bold;">
+                                {'▲' if res['change'] >= 0 else '▼'} {abs(res['change']):.2f}%
+                            </div>
+                            <div class="status-text">{res['icon']} {res['status']}</div>
                         </div>
                     """, unsafe_allow_html=True)
 
-    # --- 為替詳細（スマホ最適化） ---
+    # --- 為替詳細 ---
     with tabs[1]:
-        st.subheader("FX pairs")
         for name in [n for n in results.keys() if "/" in n]:
             res = results[name]
-            st.metric(name, f"{res['price']:{res['fmt']}}", f"{res['change']:.2f}%")
+            st.write(f"### {res['icon']} {name}")
+            st.metric("Price", f"{res['price']:{res['fmt']}}", f"{res['change']:.2f}%")
             st.line_chart(res['history'].tail(40), height=180)
             st.divider()
 
-    # --- 株式指数 ---
+    # --- その他タブ ---
     with tabs[2]:
         for name in ASSETS["主要指数"].keys():
-            res = results.get(name)
-            if res:
-                st.write(f"### {name}")
-                st.line_chart(res["history"].tail(60), height=200)
-
-    # --- 金利 ---
+            if name in results:
+                st.write(f"### {results[name]['icon']} {name}")
+                st.line_chart(results[name]["history"].tail(60), height=200)
     with tabs[3]:
         for name in ASSETS["金利/VIX"].keys():
-            res = results.get(name)
-            if res:
-                st.write(f"### {name}")
-                st.line_chart(res["history"].tail(60), height=200)
+            if name in results:
+                st.write(f"### {results[name]['icon']} {name}")
+                st.line_chart(results[name]["history"].tail(60), height=200)
 
 except Exception as e:
-    st.error(f"データ取得中... {e}")
+    st.error(f"データ更新中... {e}")
