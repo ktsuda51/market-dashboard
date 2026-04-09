@@ -6,23 +6,25 @@ import numpy as np
 # --- ページ設定 ---
 st.set_page_config(page_title="Chief Dealer Dashboard Pro", layout="wide")
 
-# --- カスタムCSS ---
+# --- カスタムCSS（スマホ最適化） ---
 st.markdown("""
     <style>
     .metric-card {
-        background-color: #1e1e1e; border-radius: 4px; padding: 12px;
-        border-left: 6px solid #333; margin-bottom: 10px; color: white;
+        background-color: #1e1e1e; border-radius: 4px; padding: 10px;
+        border-left: 5px solid #333; margin-bottom: 8px; color: white;
     }
-    .status-good { border-left-color: #00bfff; background-color: #001a33; }
+    .status-good { border-left-color: #00bfff; }
     .status-stable { border-left-color: #00ff00; }
     .status-warning { border-left-color: #ff4500; }
-    .status-critical { border-left-color: #ff0000; background-color: #3d0000; }
-    .price-text { font-size: 1.8rem; font-weight: bold; line-height: 1.2; }
-    .label-text { font-size: 0.9rem; color: #aaa; }
+    .status-critical { border-left-color: #ff0000; }
+    .price-text { font-size: 1.5rem; font-weight: bold; }
+    .label-text { font-size: 0.8rem; color: #aaa; }
+    /* スマホで指標が潰れないよう調整 */
+    [data-testid="stMetric"] { background-color: #161616; padding: 10px; border-radius: 5px; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 銘柄リスト定義（大幅拡張） ---
+# --- 銘柄リスト定義 ---
 ASSETS = {
     "為替": {
         "USD/JPY": "USDJPY=X", "EUR/USD": "EURUSD=X", "EUR/JPY": "EURJPY=X",
@@ -32,34 +34,31 @@ ASSETS = {
     "通貨指数": {
         "USD Index": "UUP", "JPY Index(FXY)": "FXY"
     },
-    "米国株/ハイテク": {
-        "S&P500": "^GSPC", "NYダウ": "^DJI", "SOX指数": "^SOX", "Nasdaq100": "^NDX"
-    },
-    "欧州/アジア株": {
-        "日経225": "^N225", "独DAX": "^GDAXI", "英FTSE": "^FTSE", "上海総合": "000001.SS"
+    "主要指数": {
+        "S&P500": "^GSPC", "NYダウ": "^DJI", "SOX指数": "^SOX", "日経225": "^N225",
+        "独DAX": "^GDAXI", "英FTSE": "^FTSE", "上海総合": "000001.SS"
     },
     "金利/VIX": {
-        "米10年債": "^TNX", "米2年債(Fed期待)": "^ZVQ", "VIX指数": "^VIX"
-    },
-    "ｺﾓﾃﾞｨﾃｨ/他": {
-        "ゴールド": "GC=F", "原油": "CL=F", "ハイイールド債": "HYG"
+        "米10年債": "^TNX", "米2年債": "^ZVQ", "VIX指数": "^VIX"
     }
 }
 
 def get_advanced_status(z_score, return_val):
     if z_score < 1.0: return "平常時", "🟢", "status-stable"
     if return_val > 0: return "良好・過熱", "🔵", "status-good"
-    return ("急落・警戒" if z_score > 2.0 else "注意・下落"), ("🔴" if z_score > 2.0 else "🟠"), ("status-critical" if z_score > 2.0 else "status-warning")
+    return "注意・警戒", "🟠", "status-warning"
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=300)
 def fetch_all_data(_tickers):
-    # Close価格を一括取得
-    data = yf.download(list(_tickers), period="1y", interval="1d", progress=False)['Close']
-    return data
+    try:
+        data = yf.download(list(_tickers), period="1y", interval="1d", progress=False)['Close']
+        return data
+    except:
+        return pd.DataFrame()
 
 # --- メイン処理 ---
-st.title("🛡️ Strategic Market Dashboard Pro")
-tabs = st.tabs(["📊 総合パネル", "💱 為替/IMM", "📈 金利/VIX", "📉 株式/指数詳細"])
+st.title("🛡️ Market Dashboard Mobile")
+tabs = st.tabs(["📊 総合", "💱 為替", "📈 指数", "📉 金利"])
 
 tickers_map = {name: ticker for cat in ASSETS.values() for name, ticker in cat.items()}
 
@@ -68,9 +67,9 @@ try:
     results = {}
     
     for name, ticker in tickers_map.items():
-        if ticker in prices_df:
+        if ticker in prices_df.columns:
             series = prices_df[ticker].dropna()
-            if series.empty: continue
+            if series.empty or len(series) < 2: continue
             
             rets = np.log(series / series.shift(1))
             vol = rets.rolling(20).std() * np.sqrt(252)
@@ -84,40 +83,46 @@ try:
             
             results[name] = {"price": curr_p, "change": change, "status": status, "icon": icon, "class": css_class, "history": series, "fmt": fmt}
 
+    # --- 総合パネル ---
     with tabs[0]:
-        st.sidebar.header("表示銘柄の選択")
-        options = list(results.keys())
-        default_sel = [x for x in ["USD/JPY", "S&P500", "日経225", "VIX指数", "USD Index", "SOX指数"] if x in options]
-        selected = st.sidebar.multiselect("ウォッチリストに追加", options, default=default_sel)
-        
-        cols = st.columns(4)
+        selected = st.multiselect("ウォッチリスト", list(results.keys()), default=["USD/JPY", "S&P500", "USD Index", "VIX指数"])
+        cols = st.columns(2) 
         for i, name in enumerate(selected):
             res = results.get(name)
             if res:
-                with cols[i % 4]:
+                with cols[i % 2]:
                     st.markdown(f"""
                         <div class="metric-card {res['class']}">
                             <div class="label-text">{name}</div>
                             <div class="price-text">{res['price']:{res['fmt']}}</div>
-                            <div style="color: {'#ff4b4b' if res['change'] >= 0 else '#00ff00'};">
-                                {'▲' if res['change'] >= 0 else '▼'} {abs(res['change']):.2f}%
-                            </div>
-                            <div style="font-size: 0.85rem; font-weight: bold; margin-top:5px;">{res['icon']} {res['status']}</div>
+                            <div style="color: {'#ff4b4b' if res['change'] >= 0 else '#00ff00'};">{'▲' if res['change'] >= 0 else '▼'} {abs(res['change']):.2f}%</div>
                         </div>
                     """, unsafe_allow_html=True)
 
-    with tabs[3]:
-        st.subheader("Global Equity Indices")
-        # 4列のチャート表示
-        idx_cols = st.columns(2)
-        target_indices = ["S&P500", "NYダウ", "SOX指数", "日経225", "独DAX", "英FTSE", "上海総合"]
-        
-        for i, name in enumerate(target_indices):
+    # --- 為替詳細（スマホ最適化） ---
+    with tabs[1]:
+        st.subheader("FX pairs")
+        for name in [n for n in results.keys() if "/" in n]:
+            res = results[name]
+            st.metric(name, f"{res['price']:{res['fmt']}}", f"{res['change']:.2f}%")
+            st.line_chart(res['history'].tail(40), height=180)
+            st.divider()
+
+    # --- 株式指数 ---
+    with tabs[2]:
+        for name in ASSETS["主要指数"].keys():
             res = results.get(name)
             if res:
-                with idx_cols[i % 2]:
-                    st.write(f"### {name}")
-                    st.line_chart(res["history"].tail(60))
+                st.write(f"### {name}")
+                st.line_chart(res["history"].tail(60), height=200)
+
+    # --- 金利 ---
+    with tabs[3]:
+        for name in ASSETS["金利/VIX"].keys():
+            res = results.get(name)
+            if res:
+                st.write(f"### {name}")
+                st.line_chart(res["history"].tail(60), height=200)
 
 except Exception as e:
-    st.error(f"システムエラーが発生しました: {e}")
+    st.error(f"データ取得中... {e}")
